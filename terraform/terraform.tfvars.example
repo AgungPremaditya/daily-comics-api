@@ -1,0 +1,8 @@
+aws_region        = "ap-southeast-1"
+aws_profile       = "daily-comics"  # Add this line
+instance_name     = "daily-comics-app"
+instance_bundle_id = "nano_2_0"
+environment       = "development"
+repository_url    = "https://github.com/yourusername/daily-comics.git"
+supabase_url      = "your-supabase-url"
+supabase_key      = "your-supabase-key"
