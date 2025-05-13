@@ -16,7 +16,7 @@ provider "aws" {
 resource "aws_lightsail_instance" "daily_comics_app" {
   name              = var.instance_name
   availability_zone = "${var.aws_region}a"
-  blueprint_id      = "amazon_linux_2"
+  blueprint_id      = "ubuntu_24_04"
   bundle_id         = var.instance_bundle_id
   
   tags = {
@@ -28,31 +28,35 @@ resource "aws_lightsail_instance" "daily_comics_app" {
   user_data = <<-EOF
     #!/bin/bash
     # Update system packages
-    sudo yum update -y
+    sudo apt update -y
+    sudo apt upgrade -y
     
     # Install Python and pip
-    sudo yum install -y python3 python3-pip git
+    sudo apt install -y python3 python3-pip python3-venv git
     
     # Install Docker
-    sudo amazon-linux-extras install docker -y
+    sudo apt install -y docker.io
     sudo systemctl start docker
     sudo systemctl enable docker
-    sudo usermod -a -G docker ec2-user
+    sudo usermod -a -G docker ubuntu
+    
+    # Create application directory with proper permissions
+    sudo mkdir -p /home/ubuntu/daily-comics
+    sudo chown -R ubuntu:ubuntu /home/ubuntu/daily-comics
     
     # Clone the application repository
-    git clone ${var.repository_url} /home/ec2-user/daily-comics
-    cd /home/ec2-user/daily-comics
+    cd /home/ubuntu/daily-comics
+    git clone ${var.repository_url} .
     
-    # Set up Python virtual environment
-    python3 -m venv venv
-    source venv/bin/activate
-    pip install -r requirements.txt
+    # Set up Python virtual environment with correct permissions
+    sudo -u ubuntu python3 -m venv /home/ubuntu/daily-comics/venv
+    sudo -u ubuntu bash -c "source /home/ubuntu/daily-comics/venv/bin/activate && pip install -r requirements.txt"
     
     # Create .env file with Supabase credentials
-    cat > /home/ec2-user/daily-comics/.env << 'ENVFILE'
+    sudo -u ubuntu bash -c "cat > /home/ubuntu/daily-comics/.env << 'ENVFILE'
     SUPABASE_URL=${var.supabase_url}
     SUPABASE_KEY=${var.supabase_key}
-    ENVFILE
+    ENVFILE"
     
     # Set up systemd service for the application
     cat > /etc/systemd/system/daily-comics.service << 'SERVICE'
@@ -61,9 +65,9 @@ resource "aws_lightsail_instance" "daily_comics_app" {
     After=network.target
     
     [Service]
-    User=ec2-user
-    WorkingDirectory=/home/ec2-user/daily-comics
-    ExecStart=/home/ec2-user/daily-comics/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000
+    User=ubuntu
+    WorkingDirectory=/home/ubuntu/daily-comics
+    ExecStart=/home/ubuntu/daily-comics/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000
     Restart=always
     
     [Install]
