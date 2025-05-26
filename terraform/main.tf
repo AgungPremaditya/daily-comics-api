@@ -2,115 +2,68 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 4.0"
+      version = "~> 5.0"
     }
   }
+  required_version = ">= 1.0.0"
 }
 
 provider "aws" {
-  region  = var.aws_region
-  profile = "daily-comics"  # Add this line to specify the profile
+  region = var.aws_region
 }
 
-# Create a Lightsail instance
-resource "aws_lightsail_instance" "daily_comics_app" {
-  name              = var.instance_name
+resource "aws_lightsail_instance" "daily_comics" {
+  name              = "daily-comics-instance"
   availability_zone = "${var.aws_region}a"
-  blueprint_id      = "ubuntu_24_04"
-  bundle_id         = var.instance_bundle_id
+  blueprint_id      = "ubuntu_22_04"
+  bundle_id         = "medium_2_0" # 2GB RAM, 2 vCPUs
   
-  tags = {
-    Name        = var.instance_name
-    Environment = var.environment
-    Application = "daily-comics"
-  }
-
   user_data = <<-EOF
-    #!/bin/bash
-    # Update system packages
-    sudo apt update -y
-    sudo apt upgrade -y
-    
-    # Install Python and pip
-    sudo apt install -y python3 python3-pip python3-venv git
-    
-    # Install Docker
-    sudo apt install -y docker.io
-    sudo systemctl start docker
-    sudo systemctl enable docker
-    sudo usermod -a -G docker ubuntu
-    
-    # Create application directory with proper permissions
-    sudo mkdir -p /home/ubuntu/daily-comics
-    sudo chown -R ubuntu:ubuntu /home/ubuntu/daily-comics
-    
-    # Clone the application repository
-    cd /home/ubuntu/daily-comics
-    git clone ${var.repository_url} .
-    
-    # Set up Python virtual environment with correct permissions
-    sudo -u ubuntu python3 -m venv /home/ubuntu/daily-comics/venv
-    sudo -u ubuntu bash -c "source /home/ubuntu/daily-comics/venv/bin/activate && pip install -r requirements.txt"
-    
-    # Create .env file with Supabase credentials
-    sudo -u ubuntu bash -c "cat > /home/ubuntu/daily-comics/.env << 'ENVFILE'
-    SUPABASE_URL=${var.supabase_url}
-    SUPABASE_KEY=${var.supabase_key}
-    ENVFILE"
-    
-    # Set up systemd service for the application
-    cat > /etc/systemd/system/daily-comics.service << 'SERVICE'
-    [Unit]
-    Description=Daily Comics FastAPI Application
-    After=network.target
-    
-    [Service]
-    User=ubuntu
-    WorkingDirectory=/home/ubuntu/daily-comics
-    ExecStart=/home/ubuntu/daily-comics/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000
-    Restart=always
-    
-    [Install]
-    WantedBy=multi-user.target
-    SERVICE
-    
-    # Enable and start the service
-    sudo systemctl daemon-reload
-    sudo systemctl enable daily-comics
-    sudo systemctl start daily-comics
-  EOF
-}
+              #!/bin/bash
+              # Update system
+              sudo apt-get update
+              sudo apt-get upgrade -y
 
-# Open ports for the Lightsail instance
-resource "aws_lightsail_instance_public_ports" "daily_comics_ports" {
-  instance_name = aws_lightsail_instance.daily_comics_app.name
+              # Install Python 3.8 and pip
+              sudo apt-get install -y python3.8 python3.8-venv python3-pip
 
-  port_info {
-    protocol  = "tcp"
-    from_port = 22
-    to_port   = 22
+              # Create app directory
+              mkdir -p /opt/daily-comics
+              cd /opt/daily-comics
+
+              # Clone the application (you'll need to replace with your actual repo URL)
+              # git clone your-repo-url .
+
+              # Setup Python virtual environment
+              python3.8 -m venv venv
+              source venv/bin/activate
+
+              # Install dependencies
+              pip install -r requirements.txt
+
+              # Setup systemd service
+              cat > /etc/systemd/system/daily-comics.service <<EOL
+              [Unit]
+              Description=Daily Comics FastAPI Application
+              After=network.target
+
+              [Service]
+              User=ubuntu
+              WorkingDirectory=/opt/daily-comics
+              Environment="PATH=/opt/daily-comics/venv/bin"
+              ExecStart=/opt/daily-comics/venv/bin/uvicorn api.main:app --host 0.0.0.0 --port 8000
+
+              [Install]
+              WantedBy=multi-user.target
+              EOL
+
+              # Start and enable the service
+              sudo systemctl start daily-comics
+              sudo systemctl enable daily-comics
+              EOF
+
+  tags = {
+    Name = "daily-comics"
+    Environment = var.environment
   }
-
-  port_info {
-    protocol  = "tcp"
-    from_port = 80
-    to_port   = 80
-  }
-
-  port_info {
-    protocol  = "tcp"
-    from_port = 8000
-    to_port   = 8000
-  }
-}
-
-# Create a static IP for the Lightsail instance
-resource "aws_lightsail_static_ip" "daily_comics_static_ip" {
-  name = "${var.instance_name}_static_ip"
-}
-
-# Attach the static IP to the Lightsail instance
-resource "aws_lightsail_static_ip_attachment" "daily_comics_static_ip_attachment" {
-  static_ip_name = aws_lightsail_static_ip.daily_comics_static_ip.name
-  instance_name  = aws_lightsail_instance.daily_comics_app.name
-}
+} 
